@@ -26,12 +26,12 @@ export function useWebsiteAnalytics(url: string | null, enabled: boolean = true)
       return data;
     },
     enabled: !!url && enabled,
-    refetchInterval: 15000, // Refetch every 15 seconds for real-time monitoring
-    staleTime: 5000,
+    refetchInterval: 5000, // Refetch every 5 seconds for real-time monitoring
+    staleTime: 2500,
   });
 }
 
-export function useWebsiteRealtimePolling(url: string | null, intervalMs: number = 15000) {
+export function useWebsiteRealtimePolling(url: string | null, intervalMs: number = 5000) {
   return useQuery({
     queryKey: ['website-realtime', url],
     queryFn: async (): Promise<WebsiteAnalyticsResult> => {

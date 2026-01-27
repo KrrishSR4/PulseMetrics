@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Globe, Clock, Activity, Zap, AlertTriangle, CheckCircle, TrendingUp, Server } from 'lucide-react';
+import { Clock, Activity, Zap, AlertTriangle, CheckCircle, TrendingUp, Server } from 'lucide-react';
 import { MetricCard } from './MetricCard';
 import { StatusBadge } from './StatusBadge';
 import { LiveIndicator } from './LiveIndicator';
@@ -8,8 +8,10 @@ import { UptimeHistoryChart } from './charts/UptimeHistoryChart';
 import { PerformanceBreakdown } from './PerformanceBreakdown';
 import { ExportButtons } from './ExportButtons';
 import { NotificationToggle } from './NotificationToggle';
+import { EmailAlertSettings } from './EmailAlertSettings';
 import { useWebsiteAnalytics } from '@/hooks/useWebsiteAnalytics';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useEmailAlerts } from '@/hooks/useEmailAlerts';
 import type { TrackedResource } from '@/types/analytics';
 
 interface WebsiteDashboardProps {
@@ -19,8 +21,10 @@ interface WebsiteDashboardProps {
 export function WebsiteDashboard({ resource }: WebsiteDashboardProps) {
   const { data, isLoading, isFetching, error } = useWebsiteAnalytics(resource.url);
   const { notifyWebsiteDown, notifyResponseTimeSpike } = useNotifications();
+  const { sendWebsiteDownAlert, sendResponseTimeSpikeAlert, sendWebsiteRecoveredAlert, getStoredEmail } = useEmailAlerts();
   const previousStatusRef = useRef<'up' | 'down' | 'unknown' | null>(null);
   const previousResponseTimeRef = useRef<number | null>(null);
+  const downSinceRef = useRef<Date | null>(null);
 
   // Check for status changes and trigger notifications
   useEffect(() => {
@@ -28,10 +32,36 @@ export function WebsiteDashboard({ resource }: WebsiteDashboardProps) {
 
     const currentStatus = data.metrics.status;
     const currentResponseTime = data.metrics.response_time_ms;
+    const hasEmailAlerts = !!getStoredEmail();
 
     // Notify if website goes down
     if (previousStatusRef.current === 'up' && currentStatus === 'down') {
       notifyWebsiteDown(resource.name, resource.url);
+      downSinceRef.current = new Date();
+      
+      // Send email alert
+      if (hasEmailAlerts) {
+        sendWebsiteDownAlert(resource.name, resource.url, {
+          statusCode: data.metrics.status_code || undefined,
+          errorMessage: data.metrics.error || undefined,
+          responseTime: currentResponseTime || undefined,
+        });
+      }
+    }
+
+    // Notify if website recovers
+    if (previousStatusRef.current === 'down' && currentStatus === 'up') {
+      const downtime = downSinceRef.current 
+        ? `${Math.round((new Date().getTime() - downSinceRef.current.getTime()) / 1000)}s`
+        : undefined;
+      
+      if (hasEmailAlerts) {
+        sendWebsiteRecoveredAlert(resource.name, resource.url, {
+          downtime,
+          responseTime: currentResponseTime || undefined,
+        });
+      }
+      downSinceRef.current = null;
     }
 
     // Notify if response time spikes (>3x previous or >2000ms)
@@ -43,13 +73,17 @@ export function WebsiteDashboard({ resource }: WebsiteDashboardProps) {
       currentResponseTime > previousResponseTimeRef.current * 3
     ) {
       notifyResponseTimeSpike(resource.name, currentResponseTime, threshold);
+      
+      if (hasEmailAlerts) {
+        sendResponseTimeSpikeAlert(resource.name, resource.url, currentResponseTime, threshold);
+      }
     }
 
     previousStatusRef.current = currentStatus;
     if (currentResponseTime) {
       previousResponseTimeRef.current = currentResponseTime;
     }
-  }, [data?.metrics, resource.notifications_enabled, resource.name, resource.url, notifyWebsiteDown, notifyResponseTimeSpike]);
+  }, [data?.metrics, resource.notifications_enabled, resource.name, resource.url, notifyWebsiteDown, notifyResponseTimeSpike, getStoredEmail, sendWebsiteDownAlert, sendResponseTimeSpikeAlert, sendWebsiteRecoveredAlert]);
 
   if (error) {
     return (
@@ -90,6 +124,7 @@ export function WebsiteDashboard({ resource }: WebsiteDashboardProps) {
           <LiveIndicator lastUpdated={data?.lastUpdated || null} isRefetching={isFetching} />
         </div>
         <div className="flex items-center gap-2">
+          <EmailAlertSettings />
           <NotificationToggle resource={resource} />
           <ExportButtons 
             resourceName={resource.name} 
