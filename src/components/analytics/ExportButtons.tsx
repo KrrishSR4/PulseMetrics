@@ -1,5 +1,6 @@
-import { Download } from 'lucide-react';
+import { FileDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { exportGitHubToPDF, exportWebsiteToPDF } from '@/lib/pdf-export';
 
 interface ExportButtonsProps {
   resourceName: string;
@@ -8,24 +9,20 @@ interface ExportButtonsProps {
 }
 
 export function ExportButtons({ resourceName, data, type }: ExportButtonsProps) {
-  const exportCSV = () => {
+  const handleExport = () => {
     if (!data) return;
-    const rows = type === 'github' 
-      ? [['Metric', 'Value'], ['Stars', (data as any).repoData?.stars], ['Forks', (data as any).repoData?.forks], ['Open Issues', (data as any).issueStats?.open]]
-      : [['Metric', 'Value'], ['Status', (data as any).metrics?.status], ['Response Time', (data as any).metrics?.response_time_ms], ['Uptime', (data as any).uptimePercentage]];
-    const csv = rows.map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${resourceName}-analytics.csv`;
-    a.click();
+    
+    if (type === 'github') {
+      exportGitHubToPDF(resourceName, data as Parameters<typeof exportGitHubToPDF>[1]);
+    } else {
+      exportWebsiteToPDF(resourceName, data as Parameters<typeof exportWebsiteToPDF>[1]);
+    }
   };
 
   return (
-    <Button variant="outline" size="sm" onClick={exportCSV} disabled={!data}>
-      <Download className="h-4 w-4 mr-2" />
-      Export CSV
+    <Button variant="outline" size="sm" onClick={handleExport} disabled={!data}>
+      <FileDown className="h-4 w-4 mr-2" />
+      Export PDF
     </Button>
   );
 }

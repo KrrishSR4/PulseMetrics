@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Star, GitFork, Eye, AlertCircle, Clock, Activity, Users, GitBranch, CheckCircle, XCircle } from 'lucide-react';
 import { MetricCard } from './MetricCard';
 import { StatusBadge } from './StatusBadge';
@@ -8,7 +9,9 @@ import { ContributorsList } from './ContributorsList';
 import { WorkflowRunsList } from './WorkflowRunsList';
 import { HealthScoreGauge } from './HealthScoreGauge';
 import { ExportButtons } from './ExportButtons';
+import { NotificationToggle } from './NotificationToggle';
 import { useGitHubAnalytics } from '@/hooks/useGitHubAnalytics';
+import { useNotifications } from '@/hooks/useNotifications';
 import type { TrackedResource } from '@/types/analytics';
 
 interface GitHubDashboardProps {
@@ -17,6 +20,31 @@ interface GitHubDashboardProps {
 
 export function GitHubDashboard({ resource }: GitHubDashboardProps) {
   const { data, isLoading, isFetching, error } = useGitHubAnalytics(resource.url);
+  const { notifyCIFailure } = useNotifications();
+  const previousFailedWorkflowsRef = useRef<Set<number>>(new Set());
+
+  // Check for CI failures and trigger notifications
+  useEffect(() => {
+    if (!resource.notifications_enabled || !data?.workflowRuns) return;
+
+    const currentFailedIds = new Set(
+      data.workflowRuns
+        .filter(r => r.conclusion === 'failure')
+        .map(r => r.id)
+    );
+
+    // Find new failures
+    currentFailedIds.forEach(id => {
+      if (!previousFailedWorkflowsRef.current.has(id)) {
+        const failedRun = data.workflowRuns.find(r => r.id === id);
+        if (failedRun) {
+          notifyCIFailure(resource.name, failedRun.name);
+        }
+      }
+    });
+
+    previousFailedWorkflowsRef.current = currentFailedIds;
+  }, [data?.workflowRuns, resource.notifications_enabled, resource.name, notifyCIFailure]);
 
   if (error) {
     return (
@@ -48,11 +76,14 @@ export function GitHubDashboard({ resource }: GitHubDashboardProps) {
           <StatusBadge status={healthStatus} />
           <LiveIndicator lastUpdated={data?.lastUpdated || null} isRefetching={isFetching} />
         </div>
-        <ExportButtons 
-          resourceName={resource.name} 
-          data={data} 
-          type="github"
-        />
+        <div className="flex items-center gap-2">
+          <NotificationToggle resource={resource} />
+          <ExportButtons 
+            resourceName={resource.name} 
+            data={data} 
+            type="github"
+          />
+        </div>
       </div>
 
       {/* Key Metrics */}
