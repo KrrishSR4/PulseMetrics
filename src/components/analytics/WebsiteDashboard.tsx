@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Globe, Clock, Activity, Zap, AlertTriangle, CheckCircle, TrendingUp, Server } from 'lucide-react';
 import { MetricCard } from './MetricCard';
 import { StatusBadge } from './StatusBadge';
@@ -6,7 +7,9 @@ import { ResponseTimeChart } from './charts/ResponseTimeChart';
 import { UptimeHistoryChart } from './charts/UptimeHistoryChart';
 import { PerformanceBreakdown } from './PerformanceBreakdown';
 import { ExportButtons } from './ExportButtons';
+import { NotificationToggle } from './NotificationToggle';
 import { useWebsiteAnalytics } from '@/hooks/useWebsiteAnalytics';
+import { useNotifications } from '@/hooks/useNotifications';
 import type { TrackedResource } from '@/types/analytics';
 
 interface WebsiteDashboardProps {
@@ -15,6 +18,38 @@ interface WebsiteDashboardProps {
 
 export function WebsiteDashboard({ resource }: WebsiteDashboardProps) {
   const { data, isLoading, isFetching, error } = useWebsiteAnalytics(resource.url);
+  const { notifyWebsiteDown, notifyResponseTimeSpike } = useNotifications();
+  const previousStatusRef = useRef<'up' | 'down' | 'unknown' | null>(null);
+  const previousResponseTimeRef = useRef<number | null>(null);
+
+  // Check for status changes and trigger notifications
+  useEffect(() => {
+    if (!resource.notifications_enabled || !data?.metrics) return;
+
+    const currentStatus = data.metrics.status;
+    const currentResponseTime = data.metrics.response_time_ms;
+
+    // Notify if website goes down
+    if (previousStatusRef.current === 'up' && currentStatus === 'down') {
+      notifyWebsiteDown(resource.name, resource.url);
+    }
+
+    // Notify if response time spikes (>3x previous or >2000ms)
+    const threshold = 2000;
+    if (
+      currentResponseTime && 
+      previousResponseTimeRef.current && 
+      currentResponseTime > threshold &&
+      currentResponseTime > previousResponseTimeRef.current * 3
+    ) {
+      notifyResponseTimeSpike(resource.name, currentResponseTime, threshold);
+    }
+
+    previousStatusRef.current = currentStatus;
+    if (currentResponseTime) {
+      previousResponseTimeRef.current = currentResponseTime;
+    }
+  }, [data?.metrics, resource.notifications_enabled, resource.name, resource.url, notifyWebsiteDown, notifyResponseTimeSpike]);
 
   if (error) {
     return (
@@ -54,11 +89,14 @@ export function WebsiteDashboard({ resource }: WebsiteDashboardProps) {
           />
           <LiveIndicator lastUpdated={data?.lastUpdated || null} isRefetching={isFetching} />
         </div>
-        <ExportButtons 
-          resourceName={resource.name} 
-          data={data} 
-          type="website"
-        />
+        <div className="flex items-center gap-2">
+          <NotificationToggle resource={resource} />
+          <ExportButtons 
+            resourceName={resource.name} 
+            data={data} 
+            type="website"
+          />
+        </div>
       </div>
 
       {/* Key Metrics */}
