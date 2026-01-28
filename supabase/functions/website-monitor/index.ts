@@ -1,5 +1,3 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -78,8 +76,9 @@ async function checkWebsite(url: string): Promise<{
       total_time_ms: Math.round(totalTime),
     };
     
-  } catch (error) {
+  } catch (err: unknown) {
     const endTime = performance.now();
+    const error = err instanceof Error ? err : new Error('Unknown error');
     metrics = {
       ...metrics,
       status: 'down',
@@ -180,10 +179,11 @@ Deno.serve(async (req) => {
       JSON.stringify(result),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error in website-monitor:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
