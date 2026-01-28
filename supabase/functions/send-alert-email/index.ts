@@ -145,10 +145,23 @@ Deno.serve(async (req) => {
       html: getAlertHtml(request),
     });
 
-    console.log('Alert email sent successfully:', emailResponse);
+    // Check for Resend API errors
+    if (emailResponse.error) {
+      console.error('Resend API error:', emailResponse.error);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: emailResponse.error.message || 'Failed to send email',
+          details: emailResponse.error
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Alert email sent successfully:', emailResponse.data);
 
     return new Response(
-      JSON.stringify({ success: true, id: emailResponse.id }),
+      JSON.stringify({ success: true, id: emailResponse.data?.id }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error: unknown) {
